@@ -6,7 +6,7 @@ from datetime import datetime
 def capturar_indicadores():
     url = "https://economia.uol.com.br/cotacoes/"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
     try:
@@ -14,38 +14,55 @@ def capturar_indicadores():
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # No UOL, os indicadores costumam ficar em tabelas ou componentes de 'indices'
-        # Criamos um dicionário para armazenar os resultados
         resultados = {
             "data_da_extracao": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             "indicadores": []
         }
 
-        # Buscamos os blocos de índices (ajustado para a estrutura comum do portal)
-        indices = soup.find_all("div", class_="info-index") # Classe comum no UOL
-
-        for item in indices:
-            nome = item.find("span", class_="name").text.strip()
+        # Nova estratégia: Procurar em todas as tabelas e links do site
+        # O UOL geralmente coloca esses dados em elementos <a> ou <td>
+        alvos = ["CDI", "SELIC", "IPCA"]
+        
+        # Vamos buscar todas as linhas de tabelas ou blocos de cotação
+        for celula in soup.find_all(['tr', 'div', 'a']):
+            texto = celula.get_text().upper()
             
-            if nome in ["CDI", "SELIC", "IPCA"]:
-                valor = item.find("span", class_="value").text.strip()
-                # A data no UOL geralmente fica em um elemento pequeno ou title
-                data_elemento = item.find("span", class_="date")
-                data_valor = data_elemento.text.strip() if data_elemento else "Não informada"
+            for alvo in alvos:
+                if alvo in texto and len(texto) < 100: # Filtro para pegar apenas o bloco do índice
+                    # Tenta encontrar o valor (número com %) dentro ou próximo do elemento
+                    parent = celula if not celula.name == 'a' else celula.parent
+                    valor_elem = parent.find(lambda tag: '%' in tag.text or ',' in tag.text)
+                    
+                    if valor_elem:
+                        valor = valor_elem.text.strip()
+                        # Evita duplicados
+                        if not any(i['nome'] == alvo for i in resultados["indicadores"]):
+                            resultados["indicadores"].append({
+                                "nome": alvo,
+                                "valor": valor,
+                                "data_referencia": "Atualizado"
+                            })
 
-                resultados["indicadores"].append({
-                    "nome": nome,
-                    "valor": valor,
-                    "data_referencia": data_valor
-                })
+        # Caso a busca automática falhe, vamos usar um seletor específico de backup
+        if not resultados["indicadores"]:
+             # Busca simplificada por tabelas
+             for row in soup.find_all('tr'):
+                 cols = row.find_all('td')
+                 if len(cols) >= 2:
+                     nome = cols[0].text.strip().upper()
+                     if any(a in nome for a in alvos):
+                         resultados["indicadores"].append({
+                             "nome": nome,
+                             "valor": cols[1].text.strip(),
+                             "data_referencia": "Consulta UOL"
+                         })
 
-        # Salva o resultado em um arquivo JSON
         with open('indicadores.json', 'w', encoding='utf-8') as f:
             json.dump(resultados, f, ensure_ascii=False, indent=4)
         
-        return "Arquivo 'indicadores.json' gerado com sucesso!"
+        return "Sucesso!"
 
     except Exception as e:
-        return f"Erro ao processar: {str(e)}"
+        return f"Erro: {str(e)}"
 
 print(capturar_indicadores())
