@@ -1,19 +1,14 @@
 import requests
-from bs4 import BeautifulSoup
 import json
 from datetime import datetime
-import re
 
-def capturar_dados():
-    url = "https://economia.uol.com.br/cotacoes/"
+def capturar_dados_direto():
+    # Esta é a URL real que o UOL usa para preencher as tabelas de índices
+    # Ela retorna um JSON puro, sem precisar "raspar" HTML
+    url_dados = "https://api.cotacoes.uol.com.br/asset/list/?fields=name,price,high,low,open,variation,close,date&format=json"
     
-    # Headers mais completos para parecer um navegador real
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,ir/apng,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
     resultados = {
@@ -21,60 +16,47 @@ def capturar_dados():
         "indicadores": []
     }
 
+    # Mapeamento de nomes que queremos
+    alvos = {
+        "CDI": "CDI",
+        "SELIC": "Selic",
+        "IPCA": "IPCA"
+    }
+
     try:
-        # Usamos uma sessão para lidar com cookies se necessário
-        session = requests.Session()
-        response = session.get(url, headers=headers, timeout=20)
-        
-        # Se o UOL bloquear, tentamos pegar o conteúdo bruto
-        soup = BeautifulSoup(response.content, 'html.parser')
-        html_puro = str(soup)
+        response = requests.get(url_dados, headers=headers, timeout=20)
+        data = response.json()
 
-        # Alvos que você definiu
-        alvos = ["CDI", "SELIC", "IPCA"]
+        if "data" in data:
+            for item in data["data"]:
+                nome_uol = item.get("name", "")
+                
+                # Verificamos se o item está na nossa lista de desejados
+                for chave, busca in alvos.items():
+                    if busca.lower() in nome_uol.lower():
+                        # Tratamento da data que vem do UOL (Ex: 20260102180000)
+                        data_uol = str(item.get("date", ""))
+                        if len(data_uol) >= 8:
+                            data_formatada = f"{data_uol[6:8]}/{data_uol[4:6]}/{data_uol[0:4]}"
+                        else:
+                            data_formatada = "Recente"
 
-        # Vamos procurar nas tabelas (tr)
-        linhas = soup.find_all('tr')
-        
-        for linha in linhas:
-            texto_linha = linha.get_text()
-            for alvo in alvos:
-                if alvo in texto_linha:
-                    colunas = linha.find_all('td')
-                    if len(colunas) >= 3:
-                        nome_encontrado = colunas[0].get_text(strip=True).upper()
-                        # Verificação exata para não pegar "IPCA-15" no lugar de "IPCA"
-                        if nome_encontrado == alvo:
-                            valor = colunas[1].get_text(strip=True)
-                            data_ref = colunas[2].get_text(strip=True)
-                            
-                            if not any(i['nome'] == alvo for i in resultados["indicadores"]):
-                                resultados["indicadores"].append({
-                                    "nome": alvo,
-                                    "valor": valor,
-                                    "data_referencia": data_ref
-                                })
+                        # Evita duplicados (como IPCA-15) se quisermos apenas o IPCA cheio
+                        if not any(i['nome'] == chave for i in resultados["indicadores"]):
+                            resultados["indicadores"].append({
+                                "nome": chave,
+                                "valor": f"{item.get('price', 0)}%",
+                                "data_referencia": data_formatada
+                            })
 
-        # Backup: Se a lista ainda estiver vazia, vamos usar busca por texto bruto (Regex)
-        if not resultados["indicadores"]:
-            for alvo in alvos:
-                # Procura o nome do alvo seguido de tags HTML e um valor com %
-                padrao = rf"{alvo}.*?<td>(.*?)<\/td>.*?<span class=\"small\">(.*?)<\/span>"
-                match = re.search(padrao, html_puro, re.DOTALL | re.IGNORECASE)
-                if match:
-                    resultados["indicadores"].append({
-                        "nome": alvo,
-                        "valor": BeautifulSoup(match.group(1), "html.parser").get_text(strip=True),
-                        "data_referencia": BeautifulSoup(match.group(2), "html.parser").get_text(strip=True)
-                    })
-
+        # Salva o arquivo
         with open('indicadores.json', 'w', encoding='utf-8') as f:
             json.dump(resultados, f, ensure_ascii=False, indent=4)
         
-        return "Processado!"
+        return "Sucesso total via API interna!"
 
     except Exception as e:
         return f"Erro: {str(e)}"
 
 if __name__ == "__main__":
-    print(capturar_dados())
+    print(capturar_dados_direto())
