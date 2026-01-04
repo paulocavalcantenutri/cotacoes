@@ -1,0 +1,35 @@
+name: Atualizar Indicadores Financeiros
+
+on:
+  schedule:
+    # Programado para rodar todos os dias às 09:00 AM (Horário UTC)
+    - cron: '0 9 * * *'
+  workflow_dispatch: # Permite que você rode manualmente se quiser
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout do código
+      uses: actions/checkout@v3
+
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Instalar dependências
+      run: |
+        pip install requests beautifulsoup4
+
+    - name: Executar o Script de Web Scraping
+      run: python bot_cotacoes.py
+
+    - name: Salvar alterações (Commit e Push)
+      run: |
+        git config --global user.name "GitHub Action Bot"
+        git config --global user.email "actions@github.com"
+        git add indicadores.json
+        git commit -m "Atualização automática: $(date)" || echo "Sem alterações para salvar"
+        git push
