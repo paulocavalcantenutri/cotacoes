@@ -1,68 +1,53 @@
 import requests
-from bs4 import BeautifulSoup
 import json
 from datetime import datetime
 
 def capturar_indicadores():
-    url = "https://economia.uol.com.br/cotacoes/"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    resultados = {
+        "data_da_extracao": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "indicadores": []
     }
 
     try:
-        response = requests.get(url, headers=headers)
-        response.encoding = 'utf-8'
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        resultados = {
-            "data_da_extracao": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-            "indicadores": []
-        }
-
-        # Nova estratégia: Procurar em todas as tabelas e links do site
-        # O UOL geralmente coloca esses dados em elementos <a> ou <td>
-        alvos = ["CDI", "SELIC", "IPCA"]
+        # 1. Capturar SELIC e CDI (Via API HG Brasil - Gratuita para pequenos volumes)
+        # Usamos essa API pois ela já entrega o dado mastigado
+        url_hg = "https://api.hgbrasil.com/finance/taxes?key=console" # Chave pública de teste
+        res = requests.get(url_hg).json()
         
-        # Vamos buscar todas as linhas de tabelas ou blocos de cotação
-        for celula in soup.find_all(['tr', 'div', 'a']):
-            texto = celula.get_text().upper()
-            
-            for alvo in alvos:
-                if alvo in texto and len(texto) < 100: # Filtro para pegar apenas o bloco do índice
-                    # Tenta encontrar o valor (número com %) dentro ou próximo do elemento
-                    parent = celula if not celula.name == 'a' else celula.parent
-                    valor_elem = parent.find(lambda tag: '%' in tag.text or ',' in tag.text)
-                    
-                    if valor_elem:
-                        valor = valor_elem.text.strip()
-                        # Evita duplicados
-                        if not any(i['nome'] == alvo for i in resultados["indicadores"]):
-                            resultados["indicadores"].append({
-                                "nome": alvo,
-                                "valor": valor,
-                                "data_referencia": "Atualizado"
-                            })
+        if res['results']:
+            dados = res['results'][0]
+            resultados["indicadores"].append({
+                "nome": "SELIC",
+                "valor": f"{dados['selic']}%",
+                "data_referencia": dados['date']
+            })
+            resultados["indicadores"].append({
+                "nome": "CDI",
+                "valor": f"{dados['cdi']}%",
+                "data_referencia": dados['date']
+            })
 
-        # Caso a busca automática falhe, vamos usar um seletor específico de backup
-        if not resultados["indicadores"]:
-             # Busca simplificada por tabelas
-             for row in soup.find_all('tr'):
-                 cols = row.find_all('td')
-                 if len(cols) >= 2:
-                     nome = cols[0].text.strip().upper()
-                     if any(a in nome for a in alvos):
-                         resultados["indicadores"].append({
-                             "nome": nome,
-                             "valor": cols[1].text.strip(),
-                             "data_referencia": "Consulta UOL"
-                         })
+        # 2. Capturar IPCA (Via API do IBGE - Oficial e Grátis)
+        # Pega o acumulado dos últimos 12 meses
+        url_ibge = "https://servicodados.ibge.gov.br/api/v3/agregados/1737/periodos/-1/variaveis/2265?localidades=N1[all]"
+        res_ibge = requests.get(url_ibge).json()
+        
+        if res_ibge:
+            valor_ipca = res_ibge[0]['resumes'][0]['res'][0]['v']
+            mes_ipca = res_ibge[0]['resumes'][0]['res'][0]['p']
+            resultados["indicadores"].append({
+                "nome": "IPCA (12 meses)",
+                "valor": f"{valor_ipca}%",
+                "data_referencia": mes_ipca
+            })
 
+        # Salva o JSON
         with open('indicadores.json', 'w', encoding='utf-8') as f:
             json.dump(resultados, f, ensure_ascii=False, indent=4)
         
-        return "Sucesso!"
+        return "Dados atualizados com sucesso via API!"
 
     except Exception as e:
-        return f"Erro: {str(e)}"
+        return f"Erro na captura: {str(e)}"
 
 print(capturar_indicadores())
