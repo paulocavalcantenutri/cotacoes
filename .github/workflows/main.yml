@@ -27,9 +27,12 @@ jobs:
       run: python bot_cotacoes.py
 
     - name: Salvar alterações (Commit e Push)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        git config --global user.name "GitHub Action Bot"
-        git config --global user.email "actions@github.com"
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add indicadores.json
-        git commit -m "Atualização automática: $(date)" || echo "Sem alterações para salvar"
-        git push
+        # O comando abaixo evita erro se o valor for igual ao anterior
+        git commit -m "Atualização automática: $(date)" || echo "Sem alterações"
+        git push origin main
