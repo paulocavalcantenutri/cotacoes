@@ -1,20 +1,4 @@
 {
-    "data_da_extracao": "04/01/2026 22:42:34",
-    "indicadores": [
-        {
-            "nome": "SELIC",
-            "valor": "0.055131%",
-            "data_referencia": "02/01/2026"
-        },
-        {
-            "nome": "CDI",
-            "valor": "0.055131%",
-            "data_referencia": "31/12/2025"
-        },
-        {
-            "nome": "IPCA",
-            "valor": "0.18%",
-            "data_referencia": "01/11/2025"
-        }
-    ]
+    "data_da_extracao": "04/01/2026 22:58:04",
+    "indicadores": []
 }
